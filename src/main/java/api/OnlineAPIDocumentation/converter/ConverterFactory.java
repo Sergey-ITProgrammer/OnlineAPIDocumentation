@@ -7,12 +7,9 @@ public class ConverterFactory {
     public String convert(List<Map<String, String>> splitCommits, Format format) {
         String result = "";
 
-        Converter formatConverter;
         switch (format) {
             case json:
-                formatConverter = new JSONConverter();
-
-                result = formatConverter.convert(splitCommits);
+                result = new JSONConverter().convert(splitCommits);
                 break;
         }
 

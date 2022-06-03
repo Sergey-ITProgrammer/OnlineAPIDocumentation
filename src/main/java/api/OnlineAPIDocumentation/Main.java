@@ -6,7 +6,7 @@ import java.io.IOException;
 
 public class Main {
     public static void main(String[] args) {
-//        String pathToFile = "";
+//        String pathToDir = "";
 //        String format = "json";
 //
 //        Format formatEnum;
@@ -16,7 +16,7 @@ public class Main {
 //        }
 
         try {
-            Parser parser = new Parser("/home/sergey/Desktop/ex.java", Format.json);
+            Parser parser = new Parser("/home/sergey/Desktop/test", Format.json);
 
             System.out.println(parser.parse());
         } catch (IOException e) {

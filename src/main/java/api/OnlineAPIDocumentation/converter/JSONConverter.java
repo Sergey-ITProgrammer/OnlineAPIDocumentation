@@ -11,13 +11,13 @@ public class JSONConverter implements Converter {
     public String convert(List<Map<String, String>> listOfComponents) {
         JSONObject jsonObject = new JSONObject();
 
-        for (int i = 0; i < listOfComponents.size(); i++) {
-            JSONObject component = new JSONObject();
-
-            component.putAll(listOfComponents.get(i));
-
-            jsonObject.put(i + 1, component);
-        }
+//        for (int i = 0; i < listOfComponents.size(); i++) {
+//            JSONObject component = new JSONObject();
+//
+//            component.putAll(listOfComponents.get(i));
+//
+//            jsonObject.put(i + 1, component);
+//        }
 
         return jsonObject.toJSONString();
     }

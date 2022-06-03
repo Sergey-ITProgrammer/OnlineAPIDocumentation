@@ -1,64 +1,130 @@
 package api.OnlineAPIDocumentation;
 
-import api.OnlineAPIDocumentation.converter.ConverterFactory;
 import api.OnlineAPIDocumentation.converter.Format;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Parser {
-    private final String pathToFile;
+    private final String pathToDir;
     private final Format format;
 
     public Parser(String pathToFile, Format format) {
-        this.pathToFile = pathToFile;
+        this.pathToDir = pathToFile;
         this.format = format;
     }
 
+    private final Map<String, String> mapOfNameFileAndTextFromFile = new HashMap<>();
+
     public String parse() throws IOException {
-        String textFromFile = getTextFromFile();
+        File directory = new File(pathToDir);
 
-        List<Map<String, String>> listOfComponents = getListOfComponents(textFromFile);
+        searchFiles(directory);
 
-        ConverterFactory converterFactory = new ConverterFactory();
+        Map<String, List<Map<String, String>>> mapOfNameFileAndListOfMapsOfComponents = getMapOfNameFileAndMapOfComponents();
 
-        return converterFactory.convert(listOfComponents, format);
+        System.out.println(mapOfNameFileAndListOfMapsOfComponents);
+
+//        List<Map<String, String>> listOfComponents = null;
+//
+//        ConverterFactory converterFactory = new ConverterFactory();
+
+        return null;
     }
 
-    private List<Map<String, String>> getListOfComponents(String textFromFile) {
-        List<Map<String, String>> listOfComponents = new ArrayList<>();
+    private Map<String, List<Map<String, String>>> getMapOfNameFileAndMapOfComponents() {
+        int groupOfMethod = 1;
+        int groupOfField = 3;
+        int groupOfFieldWithValue = 5;
 
-        Matcher matcherOfJsonViewAnnotation = Pattern.compile("@JsonView\\(.+Online.+\\)").matcher(textFromFile);
+        Map<String, List<Map<String, String>>> mapOfNameFileAndListOfMapsOfComponents = new HashMap<>();
 
-        Matcher matcherOfFieldAccess = Pattern.compile("public|private|protected").matcher(textFromFile);
+        for (String nameFile : mapOfNameFileAndTextFromFile.keySet()) {
+            String textFromFile = mapOfNameFileAndTextFromFile.get(nameFile);
 
-        matcherOfJsonViewAnnotation.results().forEach(jsonViewAnnotation -> {
-            Map<String, String> mapOfComponent = new HashMap<>();
+            Matcher matcherOfJsonViewAnnotation = Pattern.compile("@JsonView\\(.+Online.+\\)").matcher(textFromFile);
+            Matcher matcherOfMethodOrField = Pattern.compile(
+                    "((public|private|protected)\\s+.+\\(.*\\))|((public|private|protected)[\\w\\s<>]+;|((public|private|protected)[\\w\\s]+\\n?\\s*=.+;))"
+                    ).matcher(textFromFile);
 
-            if (matcherOfFieldAccess.find(jsonViewAnnotation.start())) {
-                String nameAndType = textFromFile.substring(matcherOfFieldAccess.end(), textFromFile.indexOf("\n", matcherOfFieldAccess.end())).trim();
+            List<Map<String, String>> listOfMapOfComponents = new ArrayList<>();
 
-                String type = nameAndType.substring(0, nameAndType.indexOf(" "));
-                String name = nameAndType.substring(nameAndType.indexOf(" "), nameAndType.indexOf(";")).trim();
+            matcherOfJsonViewAnnotation.results().forEach(jsonViewAnnotation -> {
 
-                mapOfComponent.put("type", type);
-                mapOfComponent.put("name", name);
+                Map<String, String> mapOfComponents = new HashMap<>();
 
-                listOfComponents.add(mapOfComponent);
+                if (matcherOfMethodOrField.find(jsonViewAnnotation.start())) {
+
+                    String method = matcherOfMethodOrField.group(groupOfMethod);
+                    String field = matcherOfMethodOrField.group(groupOfField);
+                    String fieldWithValue = matcherOfMethodOrField.group(groupOfFieldWithValue);
+
+                    if (method != null) {
+                        mapOfComponents.put("isMethod", "true");
+
+                        StringBuilder sb = new StringBuilder(method).reverse();
+
+                        mapOfComponents.put("name", new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString());
+
+                        sb = new StringBuilder(sb.delete(0, sb.indexOf(" ")).toString().trim());
+
+                        mapOfComponents.put("type", new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString());
+                    }
+
+                    if (fieldWithValue != null) {
+                        mapOfComponents.put("isMethod", "false");
+
+                        StringBuilder sb = new StringBuilder(fieldWithValue);
+                        sb = new StringBuilder(sb.delete(sb.indexOf("="), sb.length()).toString().trim()).reverse();
+
+                        mapOfComponents.put("name", new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString());
+
+                        sb = new StringBuilder(sb.delete(0, sb.indexOf(" ")).toString().trim());
+
+                        mapOfComponents.put("type", new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString());
+                    }
+                    else if (field != null) {
+                        mapOfComponents.put("isMethod", "false");
+
+                        StringBuilder sb = new StringBuilder(field).reverse();
+
+                        mapOfComponents.put("name", new StringBuilder(sb.substring(1, sb.indexOf(" "))).reverse().toString());
+
+                        sb = new StringBuilder(sb.delete(0, sb.indexOf(" ")).toString().trim());
+
+                        mapOfComponents.put("type", new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString());
+                    }
+                }
+
+                listOfMapOfComponents.add(mapOfComponents);
+            });
+
+            mapOfNameFileAndListOfMapsOfComponents.put(nameFile, listOfMapOfComponents);
+        }
+
+        return mapOfNameFileAndListOfMapsOfComponents;
+    }
+
+    private void searchFiles(File dir) throws IOException {
+        if (dir.isDirectory()) {
+            for (File file : Objects.requireNonNull(dir.listFiles())) {
+                if (file.isDirectory()) {
+                    searchFiles(file);
+                } else {
+                    String filePath = file.getPath();
+
+                    Matcher matcherOfSrcDir = Pattern.compile("/src/main/java").matcher(filePath);
+                    if (matcherOfSrcDir.find()) {
+                        filePath = filePath.substring(matcherOfSrcDir.end());
+                    }
+
+                    mapOfNameFileAndTextFromFile.put(filePath, Files.readString(file.toPath()));
+                }
             }
-        });
-
-        return listOfComponents;
-    }
-
-    private String getTextFromFile() throws IOException {
-        return Files.readString(Paths.get(pathToFile));
+        }
     }
 }
