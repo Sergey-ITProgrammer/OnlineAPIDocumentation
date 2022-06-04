@@ -37,10 +37,6 @@ public class Parser {
     }
 
     private Map<String, List<Map<String, String>>> getMapOfNameFileAndMapOfComponents() {
-        int groupOfMethod = 1;
-        int groupOfField = 3;
-        int groupOfFieldWithValue = 5;
-
         Map<String, List<Map<String, String>>> mapOfNameFileAndListOfMapsOfComponents = new HashMap<>();
 
         for (String nameFile : mapOfNameFileAndTextFromFile.keySet()) {
@@ -48,8 +44,10 @@ public class Parser {
 
             Matcher matcherOfJsonViewAnnotation = Pattern.compile("@JsonView\\(.+Online.+\\)").matcher(textFromFile);
             Matcher matcherOfMethodOrField = Pattern.compile(
-                    "((public|private|protected)\\s+.+\\(.*\\))|((public|private|protected)[\\w\\s<>]+;|((public|private|protected)[\\w\\s]+\\n?\\s*=.+;))"
+                    "(?<method>(public|private|protected)[\\w\\s\\n<>?,]+\\s+(?<nameMethod>\\w+\\s*\\([\\w\\s\\n<>?,]*\\)))|((?<field1>(public|private|protected)[\\w\\s\\n<>?,]+;)|(?<fieldWithValue>(?<field2>(public|private|protected)[\\w\\s\\n<>?,]+)=\\s*.+\\n?\\s*.+;))"
                     ).matcher(textFromFile);
+
+            Pattern patternOfValueWithGeneric = Pattern.compile("\\s\\w+<[\\w\\s\\n<>?,]*>");
 
             List<Map<String, String>> listOfMapOfComponents = new ArrayList<>();
 
@@ -59,44 +57,67 @@ public class Parser {
 
                 if (matcherOfMethodOrField.find(jsonViewAnnotation.start())) {
 
-                    String method = matcherOfMethodOrField.group(groupOfMethod);
-                    String field = matcherOfMethodOrField.group(groupOfField);
-                    String fieldWithValue = matcherOfMethodOrField.group(groupOfFieldWithValue);
+                    String method = matcherOfMethodOrField.group("method");
+                    String nameMethod = matcherOfMethodOrField.group("nameMethod");
+
+                    String field = matcherOfMethodOrField.group("field1");
+                    String fieldWithValue = matcherOfMethodOrField.group("field2");
 
                     if (method != null) {
                         mapOfComponents.put("isMethod", "true");
 
+                        mapOfComponents.put("name", nameMethod);
+
                         StringBuilder sb = new StringBuilder(method).reverse();
 
-                        mapOfComponents.put("name", new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString());
+                        sb = new StringBuilder(sb.delete(0, nameMethod.length()).toString().trim());
 
-                        sb = new StringBuilder(sb.delete(0, sb.indexOf(" ")).toString().trim());
+                        Matcher matcherOfValueWithGeneric = patternOfValueWithGeneric.matcher(sb.reverse().toString());
 
-                        mapOfComponents.put("type", new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString());
+                        if (matcherOfValueWithGeneric.find()) {
+                            mapOfComponents.put("type", matcherOfValueWithGeneric.group().trim());
+                        } else {
+                            mapOfComponents.put("type", new StringBuilder(sb.reverse().substring(0, sb.indexOf(" "))).reverse().toString());
+                        }
                     }
 
                     if (fieldWithValue != null) {
                         mapOfComponents.put("isMethod", "false");
 
-                        StringBuilder sb = new StringBuilder(fieldWithValue);
-                        sb = new StringBuilder(sb.delete(sb.indexOf("="), sb.length()).toString().trim()).reverse();
+                        StringBuilder sb = new StringBuilder(fieldWithValue.trim()).reverse();
 
-                        mapOfComponents.put("name", new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString());
+                        String name = new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString();
 
-                        sb = new StringBuilder(sb.delete(0, sb.indexOf(" ")).toString().trim());
+                        mapOfComponents.put("name", name);
 
-                        mapOfComponents.put("type", new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString());
+                        sb = new StringBuilder(sb.delete(0, name.length() + 1).toString().trim());
+
+                        Matcher matcherOfValueWithGeneric = patternOfValueWithGeneric.matcher(sb.reverse().toString());
+
+                        if (matcherOfValueWithGeneric.find()) {
+                            mapOfComponents.put("type", matcherOfValueWithGeneric.group().trim());
+                        } else {
+                            mapOfComponents.put("type", new StringBuilder(sb.reverse().substring(0, sb.indexOf(" "))).reverse().toString());
+                        }
                     }
                     else if (field != null) {
                         mapOfComponents.put("isMethod", "false");
 
                         StringBuilder sb = new StringBuilder(field).reverse();
 
-                        mapOfComponents.put("name", new StringBuilder(sb.substring(1, sb.indexOf(" "))).reverse().toString());
+                        String name = new StringBuilder(sb.substring(1, sb.indexOf(" "))).reverse().toString();
 
-                        sb = new StringBuilder(sb.delete(0, sb.indexOf(" ")).toString().trim());
+                        mapOfComponents.put("name", name);
 
-                        mapOfComponents.put("type", new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString());
+                        sb = new StringBuilder(sb.delete(0, name.length() + 1).toString().trim());
+
+                        Matcher matcherOfValueWithGeneric = patternOfValueWithGeneric.matcher(sb.reverse().toString());
+
+                        if (matcherOfValueWithGeneric.find()) {
+                            mapOfComponents.put("type", matcherOfValueWithGeneric.group().trim());
+                        } else {
+                            mapOfComponents.put("type", new StringBuilder(sb.reverse().substring(0, sb.indexOf(" "))).reverse().toString());
+                        }
                     }
                 }
 
