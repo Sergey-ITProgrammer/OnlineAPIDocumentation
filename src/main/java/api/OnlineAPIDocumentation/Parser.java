@@ -44,10 +44,10 @@ public class Parser {
 
             Matcher matcherOfJsonViewAnnotation = Pattern.compile("@JsonView\\(.+Online.+\\)").matcher(textFromFile);
             Matcher matcherOfMethodOrField = Pattern.compile(
-                    "(?<method>(public|private|protected)[\\w\\s\\n<>?,]+\\s+(?<nameMethod>\\w+\\s*\\([\\w\\s\\n<>?,]*\\)))|((?<field1>(public|private|protected)[\\w\\s\\n<>?,]+;)|(?<fieldWithValue>(?<field2>(public|private|protected)[\\w\\s\\n<>?,]+)=\\s*.+\\n?\\s*.+;))"
+                    "(?<method>(public|private|protected)[\\w\\s\\n<>?,]+\\s+(?<nameMethod>\\w+\\s*\\([\\w\\s\\n<>?,]*\\)))" +
+                            "|((?<field1>(public|private|protected)[\\w\\s\\n<>?,]+);" +
+                            "|(?<fieldWithValue>(?<field2>(public|private|protected)[\\w\\s\\n<>?,]+)=\\s*.+\\n?\\s*.+;))"
                     ).matcher(textFromFile);
-
-            Pattern patternOfValueWithGeneric = Pattern.compile("\\s\\w+<[\\w\\s\\n<>?,]*>");
 
             List<Map<String, String>> listOfMapOfComponents = new ArrayList<>();
 
@@ -64,60 +64,13 @@ public class Parser {
                     String fieldWithValue = matcherOfMethodOrField.group("field2");
 
                     if (method != null) {
-                        mapOfComponents.put("isMethod", "true");
-
-                        mapOfComponents.put("name", nameMethod);
-
-                        StringBuilder sb = new StringBuilder(method).reverse();
-
-                        sb = new StringBuilder(sb.delete(0, nameMethod.length()).toString().trim());
-
-                        Matcher matcherOfValueWithGeneric = patternOfValueWithGeneric.matcher(sb.reverse().toString());
-
-                        if (matcherOfValueWithGeneric.find()) {
-                            mapOfComponents.put("type", matcherOfValueWithGeneric.group().trim());
-                        } else {
-                            mapOfComponents.put("type", new StringBuilder(sb.reverse().substring(0, sb.indexOf(" "))).reverse().toString());
-                        }
+                        putComponentsOfMethodIntoMap(mapOfComponents, method, nameMethod);
                     }
-
                     if (fieldWithValue != null) {
-                        mapOfComponents.put("isMethod", "false");
-
-                        StringBuilder sb = new StringBuilder(fieldWithValue.trim()).reverse();
-
-                        String name = new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString();
-
-                        mapOfComponents.put("name", name);
-
-                        sb = new StringBuilder(sb.delete(0, name.length() + 1).toString().trim());
-
-                        Matcher matcherOfValueWithGeneric = patternOfValueWithGeneric.matcher(sb.reverse().toString());
-
-                        if (matcherOfValueWithGeneric.find()) {
-                            mapOfComponents.put("type", matcherOfValueWithGeneric.group().trim());
-                        } else {
-                            mapOfComponents.put("type", new StringBuilder(sb.reverse().substring(0, sb.indexOf(" "))).reverse().toString());
-                        }
+                        putComponentsOfFieldIntoMap(mapOfComponents, fieldWithValue);
                     }
                     else if (field != null) {
-                        mapOfComponents.put("isMethod", "false");
-
-                        StringBuilder sb = new StringBuilder(field).reverse();
-
-                        String name = new StringBuilder(sb.substring(1, sb.indexOf(" "))).reverse().toString();
-
-                        mapOfComponents.put("name", name);
-
-                        sb = new StringBuilder(sb.delete(0, name.length() + 1).toString().trim());
-
-                        Matcher matcherOfValueWithGeneric = patternOfValueWithGeneric.matcher(sb.reverse().toString());
-
-                        if (matcherOfValueWithGeneric.find()) {
-                            mapOfComponents.put("type", matcherOfValueWithGeneric.group().trim());
-                        } else {
-                            mapOfComponents.put("type", new StringBuilder(sb.reverse().substring(0, sb.indexOf(" "))).reverse().toString());
-                        }
+                        putComponentsOfFieldIntoMap(mapOfComponents, field);
                     }
                 }
 
@@ -128,6 +81,44 @@ public class Parser {
         }
 
         return mapOfNameFileAndListOfMapsOfComponents;
+    }
+
+    private void putComponentsOfFieldIntoMap(Map<String, String> mapOfComponents, String field) {
+        mapOfComponents.put("isMethod", "false");
+
+        StringBuilder sb = new StringBuilder(field.trim()).reverse();
+
+        String name = new StringBuilder(sb.substring(0, sb.indexOf(" "))).reverse().toString();
+
+        mapOfComponents.put("name", name);
+
+        sb = new StringBuilder(sb.delete(0, name.length() + 1).toString().trim());
+
+        Matcher matcherOfValueWithGeneric = Pattern.compile("\\s\\w+<[\\w\\s\\n<>?,]*>").matcher(sb.reverse().toString());
+
+        if (matcherOfValueWithGeneric.find()) {
+            mapOfComponents.put("type", matcherOfValueWithGeneric.group().trim());
+        } else {
+            mapOfComponents.put("type", new StringBuilder(sb.reverse().substring(0, sb.indexOf(" "))).reverse().toString());
+        }
+    }
+
+    private void putComponentsOfMethodIntoMap(Map<String, String> mapOfComponents, String method, String nameMethod) {
+        mapOfComponents.put("isMethod", "true");
+
+        mapOfComponents.put("name", nameMethod);
+
+        StringBuilder sb = new StringBuilder(method).reverse();
+
+        sb = new StringBuilder(sb.delete(0, nameMethod.length()).toString().trim());
+
+        Matcher matcherOfValueWithGeneric = Pattern.compile("\\s\\w+<[\\w\\s\\n<>?,]*>").matcher(sb.reverse().toString());
+
+        if (matcherOfValueWithGeneric.find()) {
+            mapOfComponents.put("type", matcherOfValueWithGeneric.group().trim());
+        } else {
+            mapOfComponents.put("type", new StringBuilder(sb.reverse().substring(0, sb.indexOf(" "))).reverse().toString());
+        }
     }
 
     private void searchFiles(File dir) throws IOException {
