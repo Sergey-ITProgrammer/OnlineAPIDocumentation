@@ -1,6 +1,4 @@
-package api.OnlineAPIDocumentation;
-
-import api.OnlineAPIDocumentation.converter.Format;
+package api.OnlineAPIDocumentation.parser;
 
 import java.io.File;
 import java.io.IOException;
@@ -11,11 +9,9 @@ import java.util.regex.Pattern;
 
 public class Parser {
     private final String pathToDir;
-    private final Format format;
 
-    public Parser(String pathToFile, Format format) {
+    public Parser(String pathToFile) {
         this.pathToDir = pathToFile;
-        this.format = format;
     }
 
     private final Map<String, String> mapOfNameFileAndTextFromFile = new HashMap<>();
@@ -25,19 +21,14 @@ public class Parser {
 
         searchFiles(directory);
 
-        Map<String, List<Map<String, String>>> mapOfNameFileAndListOfMapsOfComponents = getMapOfNameFileAndMapOfComponents();
+        Map<String, List<Map<String, String>>> mapOfNameFileAndListOfMapsOfFieldOrMethodComponents
+                = getMapOfNameFileAndListOfMapsOfFieldOrMethodComponents();
 
-        System.out.println(mapOfNameFileAndListOfMapsOfComponents);
-
-//        List<Map<String, String>> listOfComponents = null;
-//
-//        ConverterFactory converterFactory = new ConverterFactory();
-
-        return null;
+        return new JSONConverter().convert(mapOfNameFileAndListOfMapsOfFieldOrMethodComponents);
     }
 
-    private Map<String, List<Map<String, String>>> getMapOfNameFileAndMapOfComponents() {
-        Map<String, List<Map<String, String>>> mapOfNameFileAndListOfMapsOfComponents = new HashMap<>();
+    private Map<String, List<Map<String, String>>> getMapOfNameFileAndListOfMapsOfFieldOrMethodComponents() {
+        Map<String, List<Map<String, String>>> mapOfNameFileAndListOfMapsOfFieldOrMethodComponents = new HashMap<>();
 
         for (String nameFile : mapOfNameFileAndTextFromFile.keySet()) {
             String textFromFile = mapOfNameFileAndTextFromFile.get(nameFile);
@@ -49,7 +40,7 @@ public class Parser {
                             "|(?<fieldWithValue>(?<field2>(public|private|protected)[\\w\\s\\n<>?,]+)=\\s*.+\\n?\\s*.+;))"
                     ).matcher(textFromFile);
 
-            List<Map<String, String>> listOfMapOfComponents = new ArrayList<>();
+            List<Map<String, String>> listOfMapsOfFieldOrMethodComponents = new ArrayList<>();
 
             matcherOfJsonViewAnnotation.results().forEach(jsonViewAnnotation -> {
 
@@ -74,13 +65,13 @@ public class Parser {
                     }
                 }
 
-                listOfMapOfComponents.add(mapOfComponents);
+                listOfMapsOfFieldOrMethodComponents.add(mapOfComponents);
             });
 
-            mapOfNameFileAndListOfMapsOfComponents.put(nameFile, listOfMapOfComponents);
+            mapOfNameFileAndListOfMapsOfFieldOrMethodComponents.put(nameFile, listOfMapsOfFieldOrMethodComponents);
         }
 
-        return mapOfNameFileAndListOfMapsOfComponents;
+        return mapOfNameFileAndListOfMapsOfFieldOrMethodComponents;
     }
 
     private void putComponentsOfFieldIntoMap(Map<String, String> mapOfComponents, String field) {
