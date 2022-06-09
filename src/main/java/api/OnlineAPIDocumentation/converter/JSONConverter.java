@@ -1,5 +1,6 @@
-package api.OnlineAPIDocumentation.parser;
+package api.OnlineAPIDocumentation.converter;
 
+import api.OnlineAPIDocumentation.converter.Converter;
 import org.json.simple.JSONObject;
 
 import java.util.List;
