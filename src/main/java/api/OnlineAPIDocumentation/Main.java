@@ -23,18 +23,18 @@ public class Main {
 
         CommandLine commandLine = getCommandLine(options, args);
 
-//        if (!commandLine.hasOption("p")) {
-//            for (Option option : options.getOptions()) {
-//                System.out.println(option);
-//            }
-//
-//            System.exit(0);
-//        }
+        if (!commandLine.hasOption("p")) {
+            for (Option option : options.getOptions()) {
+                System.out.println(option);
+            }
+
+            System.exit(0);
+        }
 
         getOptionValuesFromCommandLine(commandLine);
 
         try {
-            Parser parser = new Parser("/home/sergey/Desktop/jclasses", false, Format.HTML);
+            Parser parser = new Parser(pathToDir, Boolean.getBoolean(withPackageName), format);
 
             System.out.println(parser.parse());
         } catch (IOException e) {
