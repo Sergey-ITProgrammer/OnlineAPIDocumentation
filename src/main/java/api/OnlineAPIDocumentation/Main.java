@@ -34,7 +34,7 @@ public class Main {
         getOptionValuesFromCommandLine(commandLine);
 
         try {
-            Parser parser = new Parser("/home/sergey/Desktop/test", false, Format.HTML);
+            Parser parser = new Parser("/home/sergey/Desktop/jclasses", false, Format.HTML);
 
             System.out.println(parser.parse());
         } catch (IOException e) {

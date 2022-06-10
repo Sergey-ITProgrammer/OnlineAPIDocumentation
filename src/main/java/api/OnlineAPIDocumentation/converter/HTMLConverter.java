@@ -26,18 +26,14 @@ public class HTMLConverter implements Converter {
 
         File file = new File("OnlineAPIDocumentation.html");
 
-        try {
-            Writer writer = new FileWriter(file);
-
+        try (Writer writer = new FileWriter(file)) {
             writer.write(templateEngine.process("src/main/resources/defaultHTMLTemplate.html", context));
-
-            writer.close();
-
-            if (file.createNewFile()) {
-                return "The OnlineAPIDocumentation.html file was created successfully";
-            }
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+
+        if (file.exists()) {
+            return "The " + file.getName() + " file was created successfully";
         }
 
         return null;
