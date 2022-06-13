@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -55,37 +56,12 @@ public class Parser {
 
             List<Map<String, String>> listOfMapsOfFieldOrMethodComponents = new ArrayList<>();
 
-            matcherOfJsonViewAnnotation.results().forEach(jsonViewAnnotation -> {
+            matcherOfJsonViewAnnotation.results().forEach(jsonViewAnnotationMatchResult -> {
 
                 Map<String, String> mapOfFieldOrMethodComponents = new HashMap<>();
 
-                if (matcherOfMethodOrField.find(jsonViewAnnotation.start())) {
-
-                    String description = "";
-
-                    StringBuilder descriptionStringBuilder = new StringBuilder(textFromFile.substring(0, jsonViewAnnotation.start())).reverse();
-
-                    Matcher matcher = Pattern.compile("\n\\s*\n").matcher(descriptionStringBuilder.toString());
-
-                    if (matcher.find()) {
-                        descriptionStringBuilder = new StringBuilder(descriptionStringBuilder.substring(0, matcher.end())).reverse();
-
-                        Matcher matcherOfDescription = Pattern.compile("/\\*\\*(?<desc>[\\n\\W\\w]+)\\*/")
-                                .matcher(descriptionStringBuilder.toString());
-
-                        if (matcherOfDescription.find()) {
-                            descriptionStringBuilder = new StringBuilder(matcherOfDescription.group("desc").trim());
-
-                            for (int i = 0; i < descriptionStringBuilder.length(); i++) {
-                                if (descriptionStringBuilder.charAt(i) == '*') {
-                                    descriptionStringBuilder.deleteCharAt(i);
-                                    i--;
-                                }
-                            }
-
-                            description = descriptionStringBuilder.toString();
-                        }
-                    }
+                if (matcherOfMethodOrField.find(jsonViewAnnotationMatchResult.start())) {
+                    String description = getDescription(textFromFile, jsonViewAnnotationMatchResult);
 
                     String method = matcherOfMethodOrField.group("method");
                     String methodName = matcherOfMethodOrField.group("methodName");
@@ -104,12 +80,7 @@ public class Parser {
                     }
                 }
 
-                for (Map<String, String> map : listOfMapsOfFieldOrMethodComponents) {
-                    if (map.get("name").equals(mapOfFieldOrMethodComponents.get("name"))
-                            && map.get("isMethod").equals("false") && mapOfFieldOrMethodComponents.get("isMethod").equals("true")) {
-                        mapOfFieldOrMethodComponents.put("desc", map.get("desc"));
-                    }
-                }
+                putDescriptionIfGetter(listOfMapsOfFieldOrMethodComponents, mapOfFieldOrMethodComponents);
 
                 listOfMapsOfFieldOrMethodComponents.add(mapOfFieldOrMethodComponents);
             });
@@ -121,7 +92,54 @@ public class Parser {
 
         removeIfEmpty(mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
 
+        putFileNameWithDescription(mapOfFileNameAndTextFromFile, mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
+
         return mapOfFileNameAndListOfMapsOfFieldOrMethodComponents;
+    }
+
+    private void putComponentsOfFieldIntoMap(Map<String, String> mapOfFieldOrMethodComponents, String field, String textFromFile, String description) {
+        mapOfFieldOrMethodComponents.put("isMethod", "false");
+
+        StringBuilder fieldStringBuilder = new StringBuilder(field.trim()).reverse();
+
+        String name = new StringBuilder(fieldStringBuilder.substring(0, fieldStringBuilder.indexOf(" "))).reverse().toString();
+
+        mapOfFieldOrMethodComponents.put("name", name);
+
+        fieldStringBuilder = new StringBuilder(fieldStringBuilder.delete(0, name.length() + 1).toString().trim());
+
+        Matcher matcherOfTypeWithGeneric = Pattern.compile("\\s\\w+\\s*<[\\w\\s\\n<>?,]*>").matcher(fieldStringBuilder.reverse().toString());
+
+        if (matcherOfTypeWithGeneric.find()) {
+            mapOfFieldOrMethodComponents.put("type", getType(matcherOfTypeWithGeneric.group().trim(), textFromFile));
+        } else {
+            mapOfFieldOrMethodComponents.put("type",
+                    getType(new StringBuilder(fieldStringBuilder.reverse().substring(0, fieldStringBuilder.indexOf(" "))).reverse().toString(), textFromFile));
+        }
+
+        mapOfFieldOrMethodComponents.put("desc", description);
+    }
+
+    private void putComponentsOfMethodIntoMap(Map<String, String> mapOfFieldOrMethodComponents,
+                                              String method, String methodName, String textFromFile, String description) {
+        mapOfFieldOrMethodComponents.put("isMethod", "true");
+
+        mapOfFieldOrMethodComponents.put("name", getNameOfMethod(methodName));
+
+        StringBuilder methodStringBuilder = new StringBuilder(method).reverse();
+
+        methodStringBuilder = new StringBuilder(methodStringBuilder.delete(0, methodName.length()).toString().trim());
+
+        Matcher matcherOfTypeWithGeneric = Pattern.compile("\\s\\w+\\s*<[\\w\\s\\n<>?,]*>").matcher(methodStringBuilder.reverse().toString());
+
+        if (matcherOfTypeWithGeneric.find()) {
+            mapOfFieldOrMethodComponents.put("type", getType(matcherOfTypeWithGeneric.group().trim(), textFromFile));
+        } else {
+            mapOfFieldOrMethodComponents.put("type", getType(
+                    new StringBuilder(methodStringBuilder.reverse().substring(0, methodStringBuilder.indexOf(" "))).reverse().toString(), textFromFile));
+        }
+
+        mapOfFieldOrMethodComponents.put("desc", description);
     }
 
     private void addFieldOrMethodComponentsIfExtends(Map<String, String> mapOfFileNameAndTextFromFile,
@@ -194,49 +212,43 @@ public class Parser {
         }
     }
 
-    private void putComponentsOfFieldIntoMap(Map<String, String> mapOfFieldOrMethodComponents, String field, String textFromFile, String description) {
-        mapOfFieldOrMethodComponents.put("isMethod", "false");
+    private String getDescription(String textFromFile, MatchResult jsonViewAnnotationMatchResult) {
+        String description = "";
 
-        StringBuilder fieldStringBuilder = new StringBuilder(field.trim()).reverse();
+        StringBuilder descriptionStringBuilder = new StringBuilder(textFromFile.substring(0, jsonViewAnnotationMatchResult.start())).reverse();
 
-        String name = new StringBuilder(fieldStringBuilder.substring(0, fieldStringBuilder.indexOf(" "))).reverse().toString();
+        Matcher matcherOfBorderBetweenFields = Pattern.compile("\n\\s*\n").matcher(descriptionStringBuilder.toString());
 
-        mapOfFieldOrMethodComponents.put("name", name);
+        if (matcherOfBorderBetweenFields.find()) {
+            descriptionStringBuilder = new StringBuilder(descriptionStringBuilder.substring(0, matcherOfBorderBetweenFields.end())).reverse();
 
-        fieldStringBuilder = new StringBuilder(fieldStringBuilder.delete(0, name.length() + 1).toString().trim());
+            Matcher matcherOfDescription = Pattern.compile("/\\*\\*(?<desc>[\\n\\W\\w]+)\\*/")
+                    .matcher(descriptionStringBuilder.toString());
 
-        Matcher matcherOfTypeWithGeneric = Pattern.compile("\\s\\w+\\s*<[\\w\\s\\n<>?,]*>").matcher(fieldStringBuilder.reverse().toString());
+            if (matcherOfDescription.find()) {
+                descriptionStringBuilder = new StringBuilder(matcherOfDescription.group("desc").trim());
 
-        if (matcherOfTypeWithGeneric.find()) {
-            mapOfFieldOrMethodComponents.put("type", getType(matcherOfTypeWithGeneric.group().trim(), textFromFile));
-        } else {
-            mapOfFieldOrMethodComponents.put("type",
-                    getType(new StringBuilder(fieldStringBuilder.reverse().substring(0, fieldStringBuilder.indexOf(" "))).reverse().toString(), textFromFile));
+                for (int i = 0; i < descriptionStringBuilder.length(); i++) {
+                    if (descriptionStringBuilder.charAt(i) == '*') {
+                        descriptionStringBuilder.deleteCharAt(i);
+                        i--;
+                    }
+                }
+
+                description = descriptionStringBuilder.toString();
+            }
         }
 
-        mapOfFieldOrMethodComponents.put("desc", description);
+        return description;
     }
 
-    private void putComponentsOfMethodIntoMap(Map<String, String> mapOfFieldOrMethodComponents,
-                                              String method, String methodName, String textFromFile, String description) {
-        mapOfFieldOrMethodComponents.put("isMethod", "true");
-
-        mapOfFieldOrMethodComponents.put("name", getNameOfMethod(methodName));
-
-        StringBuilder methodStringBuilder = new StringBuilder(method).reverse();
-
-        methodStringBuilder = new StringBuilder(methodStringBuilder.delete(0, methodName.length()).toString().trim());
-
-        Matcher matcherOfTypeWithGeneric = Pattern.compile("\\s\\w+\\s*<[\\w\\s\\n<>?,]*>").matcher(methodStringBuilder.reverse().toString());
-
-        if (matcherOfTypeWithGeneric.find()) {
-            mapOfFieldOrMethodComponents.put("type", getType(matcherOfTypeWithGeneric.group().trim(), textFromFile));
-        } else {
-            mapOfFieldOrMethodComponents.put("type", getType(
-                    new StringBuilder(methodStringBuilder.reverse().substring(0, methodStringBuilder.indexOf(" "))).reverse().toString(), textFromFile));
+    private void putDescriptionIfGetter(List<Map<String, String>> listOfMapsOfFieldOrMethodComponents, Map<String, String> mapOfFieldOrMethodComponents) {
+        for (Map<String, String> map : listOfMapsOfFieldOrMethodComponents) {
+            if (map.get("name").equals(mapOfFieldOrMethodComponents.get("name")) && map.get("type").equals(mapOfFieldOrMethodComponents.get("type"))
+                    && map.get("isMethod").equals("false") && mapOfFieldOrMethodComponents.get("isMethod").equals("true")) {
+                mapOfFieldOrMethodComponents.put("desc", map.get("desc"));
+            }
         }
-
-        mapOfFieldOrMethodComponents.put("desc", description);
     }
 
     private String getNameOfMethod(String nameMethod) {
@@ -274,6 +286,52 @@ public class Parser {
         } else {
             return type;
         }
+    }
+
+    private void putFileNameWithDescription(Map<String, String> mapOfFileNameAndTextFromFile,
+                                            Map<String, List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents) {
+        for (String fileName : mapOfFileNameAndTextFromFile.keySet()) {
+            String descriptionOfClass = getDescriptionOfClass(mapOfFileNameAndTextFromFile.get(fileName));
+
+            if (!descriptionOfClass.isEmpty()) {
+                mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.put(
+                        String.format("%s - %s", fileName, descriptionOfClass), mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.remove(fileName));
+            }
+        }
+    }
+
+    private String getDescriptionOfClass(String textFromFile) {
+        String description = "";
+
+        Matcher matcherOfClass = Pattern.compile("class[\\s\\n]+\\w+").matcher(textFromFile);
+
+        if (matcherOfClass.find()) {
+            StringBuilder descriptionStringBuilder = new StringBuilder(textFromFile.substring(0, matcherOfClass.start())).reverse();
+
+            Matcher matcherOfBorderBetweenFields = Pattern.compile("\n\\s*\n").matcher(descriptionStringBuilder.toString());
+
+            if (matcherOfBorderBetweenFields.find()) {
+                descriptionStringBuilder = new StringBuilder(descriptionStringBuilder.substring(0, matcherOfBorderBetweenFields.end())).reverse();
+
+                Matcher matcherOfDescription = Pattern.compile("/\\*\\*(?<desc>[\\n\\W\\w]+)\\*/")
+                        .matcher(descriptionStringBuilder.toString());
+
+                if (matcherOfDescription.find()) {
+                    descriptionStringBuilder = new StringBuilder(matcherOfDescription.group("desc").trim());
+
+                    for (int i = 0; i < descriptionStringBuilder.length(); i++) {
+                        if (descriptionStringBuilder.charAt(i) == '*') {
+                            descriptionStringBuilder.deleteCharAt(i);
+                            i--;
+                        }
+                    }
+
+                    description = descriptionStringBuilder.toString();
+                }
+            }
+        }
+
+        return description;
     }
 
     private void searchFiles(File dir, Map<String, String> mapOfFileNameAndTextFromFile) throws IOException {
