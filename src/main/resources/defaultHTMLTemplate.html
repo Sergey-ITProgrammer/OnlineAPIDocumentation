@@ -5,12 +5,12 @@
     <title>OnlineAPIDocumentation</title>
 </head>
 <body>
-    <table th:each="nameFile: ${mapOfNameFileAndListOfMapsOfFieldOrMethodComponents.keySet()}" style="display: table;
+    <table th:each="fileName: ${mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.keySet()}" style="display: table;
                                                                                                         width: 100%;
                                                                                                         border-spacing: 2px;
                                                                                                         border: none;
                                                                                                         margin: 20px 0;">
-        <h2 th:text="${nameFile}"></h2>
+        <h2 th:text="${fileName}"></h2>
 
         <thead style="background: #e0e0e0;
                         text-align: center;
@@ -34,7 +34,7 @@
                       border-spacing: 2px;
                       border: none;
                       background-color: #e7e7e7;">
-            <tr th:each="listOfMapsOfFieldOrMethodComponents: ${mapOfNameFileAndListOfMapsOfFieldOrMethodComponents.get(nameFile)}">
+            <tr th:each="listOfMapsOfFieldOrMethodComponents: ${mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.get(fileName)}">
                 <td th:text="${listOfMapsOfFieldOrMethodComponents.get('type')}" style="padding: 20px"></td>
                 <td th:text="${listOfMapsOfFieldOrMethodComponents.get('name')}" style="padding: 20px"></td>
                 <td th:text="${listOfMapsOfFieldOrMethodComponents.get('desc')}" style="padding: 20px; white-space: pre-wrap;"></td>

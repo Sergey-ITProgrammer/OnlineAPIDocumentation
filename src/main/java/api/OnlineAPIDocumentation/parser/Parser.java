@@ -1,18 +1,23 @@
 package api.OnlineAPIDocumentation.parser;
 
+import api.OnlineAPIDocumentation.Main;
 import api.OnlineAPIDocumentation.converter.ConverterFactory;
 import api.OnlineAPIDocumentation.converter.Format;
+import api.OnlineAPIDocumentation.directoryWithProject.DirectoryWithProject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.*;
-import java.util.regex.MatchResult;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Parser {
+    private static final Logger logger = LoggerFactory.getLogger(Main.class);
+
     private final String pathToDir;
     private final boolean withPackageName;
     private final Format format;
@@ -24,24 +29,19 @@ public class Parser {
     }
 
     public String parse() throws IOException {
-        Map<String, String> mapOfFileNameAndTextFromFile = new HashMap<>();
-
-        File directory = new File(pathToDir);
-        searchFiles(directory, mapOfFileNameAndTextFromFile);
+        Map<String, String> mapOfFileNameAndTextFromFile = new DirectoryWithProject(pathToDir).getMapOfFileNameAndTextFromFile();
 
         Map<String, List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents
                 = getMapOfFileNameAndListOfMapsOfFieldOrMethodComponents(mapOfFileNameAndTextFromFile);
 
         ConverterFactory converter = new ConverterFactory();
 
+        logger.info("The converting was completed successfully");
+
         return converter.convert(mapOfFileNameAndListOfMapsOfFieldOrMethodComponents, format);
     }
 
     private Map<String, List<Map<String, String>>> getMapOfFileNameAndListOfMapsOfFieldOrMethodComponents(Map<String, String> mapOfFileNameAndTextFromFile) {
-        return processMapOfFileNameAndTextFromFile(mapOfFileNameAndTextFromFile);
-    }
-
-    private Map<String, List<Map<String, String>>> processMapOfFileNameAndTextFromFile(Map<String, String> mapOfFileNameAndTextFromFile) {
         Map<String, List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents = new HashMap<>();
 
         for (String fileName : mapOfFileNameAndTextFromFile.keySet()) {
@@ -61,7 +61,7 @@ public class Parser {
                 Map<String, String> mapOfFieldOrMethodComponents = new HashMap<>();
 
                 if (matcherOfMethodOrField.find(jsonViewAnnotationMatchResult.start())) {
-                    String description = getDescription(textFromFile, jsonViewAnnotationMatchResult);
+                    String description = getFieldOrMethodOrClassDescription(textFromFile, jsonViewAnnotationMatchResult.start());
 
                     String method = matcherOfMethodOrField.group("method");
                     String methodName = matcherOfMethodOrField.group("methodName");
@@ -70,17 +70,17 @@ public class Parser {
                     String fieldWithValue = matcherOfMethodOrField.group("field2");
 
                     if (method != null) {
-                        putComponentsOfMethodIntoMap(mapOfFieldOrMethodComponents, method, methodName, textFromFile, description);
+                        putMethodComponentsIntoMap(mapOfFieldOrMethodComponents, method, methodName, textFromFile, description);
+
+                        putDescriptionIfMethodIsGetter(listOfMapsOfFieldOrMethodComponents, mapOfFieldOrMethodComponents);
                     }
                     else if (fieldWithValue != null) {
-                        putComponentsOfFieldIntoMap(mapOfFieldOrMethodComponents, fieldWithValue, textFromFile, description);
+                        putFieldComponentsIntoMap(mapOfFieldOrMethodComponents, fieldWithValue, textFromFile, description);
                     }
                     else if (field != null) {
-                        putComponentsOfFieldIntoMap(mapOfFieldOrMethodComponents, field, textFromFile, description);
+                        putFieldComponentsIntoMap(mapOfFieldOrMethodComponents, field, textFromFile, description);
                     }
                 }
-
-                putDescriptionIfGetter(listOfMapsOfFieldOrMethodComponents, mapOfFieldOrMethodComponents);
 
                 listOfMapsOfFieldOrMethodComponents.add(mapOfFieldOrMethodComponents);
             });
@@ -88,16 +88,16 @@ public class Parser {
             mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.put(fileName, listOfMapsOfFieldOrMethodComponents);
         }
 
-        addFieldOrMethodComponentsIfExtends(mapOfFileNameAndTextFromFile, mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
+        addFieldOrMethodComponentsIfClassExtends(mapOfFileNameAndTextFromFile, mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
 
-        removeIfEmpty(mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
+        removeIfNoFieldsOrMethodsWithJsonViewAnnotation(mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
 
-        putFileNameWithDescription(mapOfFileNameAndTextFromFile, mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
+        putClassDescription(mapOfFileNameAndTextFromFile, mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
 
         return mapOfFileNameAndListOfMapsOfFieldOrMethodComponents;
     }
 
-    private void putComponentsOfFieldIntoMap(Map<String, String> mapOfFieldOrMethodComponents, String field, String textFromFile, String description) {
+    private void putFieldComponentsIntoMap(Map<String, String> mapOfFieldOrMethodComponents, String field, String textFromFile, String description) {
         mapOfFieldOrMethodComponents.put("isMethod", "false");
 
         StringBuilder fieldStringBuilder = new StringBuilder(field.trim()).reverse();
@@ -108,114 +108,76 @@ public class Parser {
 
         fieldStringBuilder = new StringBuilder(fieldStringBuilder.delete(0, name.length() + 1).toString().trim());
 
-        Matcher matcherOfTypeWithGeneric = Pattern.compile("\\s\\w+\\s*<[\\w\\s\\n<>?,]*>").matcher(fieldStringBuilder.reverse().toString());
-
-        if (matcherOfTypeWithGeneric.find()) {
-            mapOfFieldOrMethodComponents.put("type", getType(matcherOfTypeWithGeneric.group().trim(), textFromFile));
-        } else {
-            mapOfFieldOrMethodComponents.put("type",
-                    getType(new StringBuilder(fieldStringBuilder.reverse().substring(0, fieldStringBuilder.indexOf(" "))).reverse().toString(), textFromFile));
-        }
+        mapOfFieldOrMethodComponents.put("type", getFieldOrMethodType(fieldStringBuilder, textFromFile));
 
         mapOfFieldOrMethodComponents.put("desc", description);
     }
 
-    private void putComponentsOfMethodIntoMap(Map<String, String> mapOfFieldOrMethodComponents,
-                                              String method, String methodName, String textFromFile, String description) {
+    private void putMethodComponentsIntoMap(Map<String, String> mapOfFieldOrMethodComponents,
+                                            String method, String methodName, String textFromFile, String description) {
         mapOfFieldOrMethodComponents.put("isMethod", "true");
 
-        mapOfFieldOrMethodComponents.put("name", getNameOfMethod(methodName));
+        mapOfFieldOrMethodComponents.put("name", getMethodName(methodName));
 
         StringBuilder methodStringBuilder = new StringBuilder(method).reverse();
 
         methodStringBuilder = new StringBuilder(methodStringBuilder.delete(0, methodName.length()).toString().trim());
 
-        Matcher matcherOfTypeWithGeneric = Pattern.compile("\\s\\w+\\s*<[\\w\\s\\n<>?,]*>").matcher(methodStringBuilder.reverse().toString());
-
-        if (matcherOfTypeWithGeneric.find()) {
-            mapOfFieldOrMethodComponents.put("type", getType(matcherOfTypeWithGeneric.group().trim(), textFromFile));
-        } else {
-            mapOfFieldOrMethodComponents.put("type", getType(
-                    new StringBuilder(methodStringBuilder.reverse().substring(0, methodStringBuilder.indexOf(" "))).reverse().toString(), textFromFile));
-        }
+        mapOfFieldOrMethodComponents.put("type", getFieldOrMethodType(methodStringBuilder, textFromFile));
 
         mapOfFieldOrMethodComponents.put("desc", description);
     }
 
-    private void addFieldOrMethodComponentsIfExtends(Map<String, String> mapOfFileNameAndTextFromFile,
-                                                     Map<String, List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents) {
-        for (String fileName : mapOfFileNameAndTextFromFile.keySet()) {
-            List<Map<String, String>> fieldOrMethodFromParentClasses = new ArrayList<>();
+    private String getMethodName(String nameMethod) {
+        Matcher matcherOfNameMethod = Pattern.compile("get(?<name>\\w+)\\s*\\([\\w\\s\\n<>?,]*\\)").matcher(nameMethod);
 
-            getFieldOrMethodComponentsFromParentClasses(fileName, fieldOrMethodFromParentClasses,
-                    mapOfFileNameAndTextFromFile, mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
-
-            mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.get(fileName).addAll(fieldOrMethodFromParentClasses);
+        if (matcherOfNameMethod.find()) {
+            return Character.toLowerCase(matcherOfNameMethod.group("name").charAt(0))
+                    + matcherOfNameMethod.group("name").substring(1);
+        } else {
+            return nameMethod;
         }
     }
 
-    private void getFieldOrMethodComponentsFromParentClasses(String fileName,
-                                                             List<Map<String, String>> fieldOrMethodFromParentClasses,
-                                                             Map<String, String> mapOfFileNameAndTextFromFile,
-                                                             Map<String, List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents) {
-        String parentClasses = getParentClasses(fileName, mapOfFileNameAndTextFromFile);
+    private String getFieldOrMethodType(StringBuilder fieldOrMethodStringBuilder, String textFromFile) {
+        Matcher matcherOfTypeWithGeneric = Pattern.compile("\\s\\w+\\s*<[\\w\\s\\n<>?,]*>").matcher(fieldOrMethodStringBuilder.reverse().toString());
 
-        if (parentClasses != null) {
-            String[] arrOfParentClass = parentClasses.split(",");
-
-            for (String parentClass : arrOfParentClass) {
-                for (String fileName1 : mapOfFileNameAndTextFromFile.keySet()) {
-                    if (fileName1.contains(parentClass.trim())) {
-                        fieldOrMethodFromParentClasses.addAll(mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.get(fileName1));
-                    }
-
-                    String parentClass1 = getParentClasses(fileName1, mapOfFileNameAndTextFromFile);
-
-                    if (parentClass1 != null) {
-                        for (String fileName2 : mapOfFileNameAndTextFromFile.keySet()) {
-                            if (fileName2.contains(parentClass1)) {
-                                getFieldOrMethodComponentsFromParentClasses(fileName2, fieldOrMethodFromParentClasses,
-                                        mapOfFileNameAndTextFromFile, mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
-                            }
-                        }
-                    }
-                }
-            }
+        String type;
+        if (matcherOfTypeWithGeneric.find()) {
+            type = matcherOfTypeWithGeneric.group().trim();
+        } else {
+            type = new StringBuilder(fieldOrMethodStringBuilder.reverse().substring(0, fieldOrMethodStringBuilder.indexOf(" "))).reverse().toString();
         }
+
+        if (withPackageName) {
+            return getFieldOrMethodTypeWithPackageName(type, textFromFile);
+        }
+
+        return type;
     }
 
-    private String getParentClasses(String fileName, Map<String, String> mapOfFileNameAndTextFromFile) {
-        String textFromFile = mapOfFileNameAndTextFromFile.get(fileName);
+    private String getFieldOrMethodTypeWithPackageName(String value, String textFromFile) {
+        Matcher matcherOfTypeWithGeneric = Pattern.compile("(?<typeWithoutGeneric>\\w+)[\\s\\n]*<[\\w\\s\\n<>?,]+>").matcher(value);
 
-        Matcher matcherOfParentClass = Pattern.compile("class[\\s\\n]+\\w+[\\s\\n]+extends[\\s\\n]+(?<parentClass>[\\w\\s\\n,]+)")
+        String type = value;
+        if (matcherOfTypeWithGeneric.find()) {
+            type = matcherOfTypeWithGeneric.group("typeWithoutGeneric").trim();
+        }
+
+        Matcher matcherOfPackageName = Pattern.compile("import(?<packageName>[\\s\\n]+[\\w\\s\\n.]+[\\s\\n.]+" + type + "[\\s\\n]*);")
                 .matcher(textFromFile);
-        Matcher matcherOfParentClassWithImplements = Pattern
-                .compile("class[\\s\\n]+\\w+[\\s\\n]+extends[\\s\\n]+(?<parentClass>[\\w\\s\\n,]+)implements").matcher(textFromFile);
 
-        String parentClasses = null;
-
-        if (matcherOfParentClassWithImplements.find()) {
-            parentClasses = matcherOfParentClassWithImplements.group("parentClass");
-        }
-        else if (matcherOfParentClass.find()) {
-            parentClasses = matcherOfParentClass.group("parentClass");
-        }
-
-        return parentClasses;
-    }
-
-    private void removeIfEmpty(Map<String, List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents) {
-        for (String fileName : mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.keySet()) {
-            if (mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.get(fileName).isEmpty()) {
-                mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.remove(fileName);
-            }
+        if (matcherOfPackageName.find()) {
+            return matcherOfPackageName.group("packageName").trim();
+        } else {
+            return type;
         }
     }
 
-    private String getDescription(String textFromFile, MatchResult jsonViewAnnotationMatchResult) {
+    private String getFieldOrMethodOrClassDescription(String textFromFile, Integer start) {
         String description = "";
 
-        StringBuilder descriptionStringBuilder = new StringBuilder(textFromFile.substring(0, jsonViewAnnotationMatchResult.start())).reverse();
+        StringBuilder descriptionStringBuilder = new StringBuilder(textFromFile.substring(0, start)).reverse();
 
         Matcher matcherOfBorderBetweenFields = Pattern.compile("\n\\s*\n").matcher(descriptionStringBuilder.toString());
 
@@ -242,7 +204,7 @@ public class Parser {
         return description;
     }
 
-    private void putDescriptionIfGetter(List<Map<String, String>> listOfMapsOfFieldOrMethodComponents, Map<String, String> mapOfFieldOrMethodComponents) {
+    private void putDescriptionIfMethodIsGetter(List<Map<String, String>> listOfMapsOfFieldOrMethodComponents, Map<String, String> mapOfFieldOrMethodComponents) {
         for (Map<String, String> map : listOfMapsOfFieldOrMethodComponents) {
             if (map.get("name").equals(mapOfFieldOrMethodComponents.get("name")) && map.get("type").equals(mapOfFieldOrMethodComponents.get("type"))
                     && map.get("isMethod").equals("false") && mapOfFieldOrMethodComponents.get("isMethod").equals("true")) {
@@ -251,116 +213,92 @@ public class Parser {
         }
     }
 
-    private String getNameOfMethod(String nameMethod) {
-        Matcher matcherOfNameMethod = Pattern.compile("get(?<name>\\w+)\\s*\\([\\w\\s\\n<>?,]*\\)").matcher(nameMethod);
-
-        if (matcherOfNameMethod.find()) {
-            return Character.toLowerCase(matcherOfNameMethod.group("name").charAt(0))
-                    + matcherOfNameMethod.group("name").substring(1);
-        } else {
-            return nameMethod;
-        }
-    }
-
-    private String getType(String type, String textFromFile) {
-        if (withPackageName) {
-            return getTypeWithPackageName(type, textFromFile);
-        } else {
-            return type;
-        }
-    }
-
-    private String getTypeWithPackageName(String value, String textFromFile) {
-        Matcher matcherOfTypeWithGeneric = Pattern.compile("(?<typeWithoutGeneric>\\w+)[\\s\\n]*<[\\w\\s\\n<>?,]+>").matcher(value);
-
-        String type = value;
-        if (matcherOfTypeWithGeneric.find()) {
-            type = matcherOfTypeWithGeneric.group("typeWithoutGeneric").trim();
-        }
-
-        Matcher matcherOfPackageName = Pattern.compile("import(?<packageName>[\\s\\n]+[\\w\\s\\n.]+[\\s\\n.]+" + type + "[\\s\\n]*);")
-                .matcher(textFromFile);
-
-        if (matcherOfPackageName.find()) {
-            return matcherOfPackageName.group("packageName").trim();
-        } else {
-            return type;
-        }
-    }
-
-    private void putFileNameWithDescription(Map<String, String> mapOfFileNameAndTextFromFile,
-                                            Map<String, List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents) {
+    private void addFieldOrMethodComponentsIfClassExtends(Map<String, String> mapOfFileNameAndTextFromFile,
+                                                          Map<String, List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents) {
         for (String fileName : mapOfFileNameAndTextFromFile.keySet()) {
-            String descriptionOfClass = getDescriptionOfClass(mapOfFileNameAndTextFromFile.get(fileName));
+            List<Map<String, String>> fieldOrMethodFromParentClasses = new ArrayList<>();
+
+            getFieldOrMethodComponentsFromParentClasses(fileName, fieldOrMethodFromParentClasses,
+                    mapOfFileNameAndTextFromFile, mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
+
+            mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.get(fileName).addAll(fieldOrMethodFromParentClasses);
+        }
+    }
+
+    private void getFieldOrMethodComponentsFromParentClasses(String fileName,
+                                                             List<Map<String, String>> fieldOrMethodFromParentClasses,
+                                                             Map<String, String> mapOfFileNameAndTextFromFile,
+                                                             Map<String, List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents) {
+        String parentClasses = getParentClasses(mapOfFileNameAndTextFromFile.get(fileName));
+
+        if (parentClasses != null) {
+            String[] arrOfParentClass = parentClasses.split(",");
+
+            for (String parentClass : arrOfParentClass) {
+                for (String fileName1 : mapOfFileNameAndTextFromFile.keySet()) {
+                    if (fileName1.contains(parentClass.trim())) {
+                        fieldOrMethodFromParentClasses.addAll(mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.get(fileName1));
+                    }
+
+                    String parentClass1 = getParentClasses(mapOfFileNameAndTextFromFile.get(fileName1));
+
+                    if (parentClass1 != null) {
+                        for (String fileName2 : mapOfFileNameAndTextFromFile.keySet()) {
+                            if (fileName2.contains(parentClass1)) {
+                                getFieldOrMethodComponentsFromParentClasses(fileName2, fieldOrMethodFromParentClasses,
+                                        mapOfFileNameAndTextFromFile, mapOfFileNameAndListOfMapsOfFieldOrMethodComponents);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private String getParentClasses(String textFromFile) {
+        Matcher matcherOfParentClass = Pattern.compile("class[\\s\\n]+\\w+[\\s\\n]+extends[\\s\\n]+(?<parentClass>[\\w\\s\\n,]+)")
+                .matcher(textFromFile);
+        Matcher matcherOfParentClassWithImplements = Pattern
+                .compile("class[\\s\\n]+\\w+[\\s\\n]+extends[\\s\\n]+(?<parentClass>[\\w\\s\\n,]+)implements").matcher(textFromFile);
+
+        String parentClasses = null;
+
+        if (matcherOfParentClassWithImplements.find()) {
+            parentClasses = matcherOfParentClassWithImplements.group("parentClass");
+        }
+        else if (matcherOfParentClass.find()) {
+            parentClasses = matcherOfParentClass.group("parentClass");
+        }
+
+        return parentClasses;
+    }
+
+    private void removeIfNoFieldsOrMethodsWithJsonViewAnnotation(Map<String,
+            List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents) {
+        for (String fileName : mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.keySet()) {
+            if (mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.get(fileName).isEmpty()) {
+                mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.remove(fileName);
+            }
+        }
+    }
+
+    private void putClassDescription(Map<String, String> mapOfFileNameAndTextFromFile,
+                                     Map<String, List<Map<String, String>>> mapOfFileNameAndListOfMapsOfFieldOrMethodComponents) {
+        for (String fileName : mapOfFileNameAndTextFromFile.keySet()) {
+            String textFromFile = mapOfFileNameAndTextFromFile.get(fileName);
+
+            String descriptionOfClass = "";
+
+            Matcher matcherOfClass = Pattern.compile("class[\\s\\n]+\\w+").matcher(textFromFile);
+
+            if (matcherOfClass.find()) {
+                descriptionOfClass = getFieldOrMethodOrClassDescription(textFromFile, matcherOfClass.start());
+            }
 
             if (!descriptionOfClass.isEmpty()) {
                 mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.put(
                         String.format("%s - %s", fileName, descriptionOfClass), mapOfFileNameAndListOfMapsOfFieldOrMethodComponents.remove(fileName));
             }
-        }
-    }
-
-    private String getDescriptionOfClass(String textFromFile) {
-        String description = "";
-
-        Matcher matcherOfClass = Pattern.compile("class[\\s\\n]+\\w+").matcher(textFromFile);
-
-        if (matcherOfClass.find()) {
-            StringBuilder descriptionStringBuilder = new StringBuilder(textFromFile.substring(0, matcherOfClass.start())).reverse();
-
-            Matcher matcherOfBorderBetweenFields = Pattern.compile("\n\\s*\n").matcher(descriptionStringBuilder.toString());
-
-            if (matcherOfBorderBetweenFields.find()) {
-                descriptionStringBuilder = new StringBuilder(descriptionStringBuilder.substring(0, matcherOfBorderBetweenFields.end())).reverse();
-
-                Matcher matcherOfDescription = Pattern.compile("/\\*\\*(?<desc>[\\n\\W\\w]+)\\*/")
-                        .matcher(descriptionStringBuilder.toString());
-
-                if (matcherOfDescription.find()) {
-                    descriptionStringBuilder = new StringBuilder(matcherOfDescription.group("desc").trim());
-
-                    for (int i = 0; i < descriptionStringBuilder.length(); i++) {
-                        if (descriptionStringBuilder.charAt(i) == '*') {
-                            descriptionStringBuilder.deleteCharAt(i);
-                            i--;
-                        }
-                    }
-
-                    description = descriptionStringBuilder.toString();
-                }
-            }
-        }
-
-        return description;
-    }
-
-    private void searchFiles(File dir, Map<String, String> mapOfFileNameAndTextFromFile) throws IOException {
-        BasicFileAttributes fileAttributes = Files.readAttributes(dir.toPath(), BasicFileAttributes.class);
-
-        if (fileAttributes.isDirectory()) {
-            for (File file : Objects.requireNonNull(dir.listFiles())) {
-                if (file.isDirectory()) {
-                    searchFiles(file, mapOfFileNameAndTextFromFile);
-                } else {
-                    String filePath = file.getPath();
-
-                    Matcher matcherOfSrcDir = Pattern.compile("/src/main/java").matcher(filePath);
-                    if (matcherOfSrcDir.find()) {
-                        filePath = filePath.substring(matcherOfSrcDir.end());
-                    }
-
-                    mapOfFileNameAndTextFromFile.put(filePath, Files.readString(file.toPath()));
-                }
-            }
-        } else if (fileAttributes.isRegularFile()) {
-            String filePath = dir.getPath();
-
-            Matcher matcherOfSrcDir = Pattern.compile("/src/main/java").matcher(filePath);
-            if (matcherOfSrcDir.find()) {
-                filePath = filePath.substring(matcherOfSrcDir.end());
-            }
-
-            mapOfFileNameAndTextFromFile.put(filePath, Files.readString(dir.toPath()));
         }
     }
 }
