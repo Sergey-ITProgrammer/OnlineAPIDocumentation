@@ -11,6 +11,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class DirectoryWithProject {
+    private final static String srcDirPath = "/src/main/java";
+
     private final String pathToDir;
 
     public DirectoryWithProject(String pathToDir) {
@@ -47,7 +49,7 @@ public class DirectoryWithProject {
     private String getFilePath(File file) {
         String filePath = file.getPath();
 
-        Matcher matcherOfSrcDir = Pattern.compile("/src/main/java").matcher(filePath);
+        Matcher matcherOfSrcDir = Pattern.compile(srcDirPath).matcher(filePath);
         if (matcherOfSrcDir.find()) {
             filePath = filePath.substring(matcherOfSrcDir.end());
         }

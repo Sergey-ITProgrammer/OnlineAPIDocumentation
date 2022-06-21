@@ -40,7 +40,7 @@ public class Main {
         try {
             Parser parser = new Parser(pathToDir, getWithPackageName(), getFormat());
 
-            System.out.println(parser.parse());
+            logger.info(parser.parse());
         } catch (IOException e) {
             logger.error("The file on the " + pathToDir + " path is incorrect", e);
 
@@ -88,7 +88,7 @@ public class Main {
     private static Format getFormat() {
         Format formatEnum;
 
-        switch (format) {
+        switch (format.toLowerCase()) {
             case "html":
                 formatEnum = Format.HTML;
                 break;
